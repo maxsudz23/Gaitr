@@ -1,66 +1,143 @@
-import * as Device from 'expo-device';
-import { Platform, Pressable, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
+import { GatorLogo } from '@/components/gator-logo';
+import { ShoeCard } from '@/components/shoe-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/hooks/use-theme';
+import { fetchShoes, searchShoes, type ShoeListItem } from '@/lib/shoes';
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+const SEARCH_DEBOUNCE_MS = 300;
 
+// The home screen: browse and search the shoe catalog.
 export default function HomeScreen() {
-  const { session, signOut } = useAuth();
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const [query, setQuery] = useState('');
+  const [shoes, setShoes] = useState<ShoeListItem[]>([]);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadFor = useCallback((value: string) => {
+    const trimmed = value.trim();
+    return trimmed ? searchShoes(trimmed) : fetchShoes();
+  }, []);
+
+  // Reload whenever the query changes. Debounced while typing so we don't fire a
+  // request per keystroke; the list stays visible (status is never reset to
+  // 'loading' after the first load) to avoid a flicker on every change.
+  useEffect(() => {
+    let cancelled = false;
+    const handle = setTimeout(
+      () => {
+        loadFor(query)
+          .then((data) => {
+            if (!cancelled) {
+              setShoes(data);
+              setStatus('ready');
+            }
+          })
+          .catch((error) => {
+            if (!cancelled) {
+              console.error('Failed to load shoes', error);
+              setStatus('error');
+            }
+          });
+      },
+      query ? SEARCH_DEBOUNCE_MS : 0,
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [query, loadFor]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      setShoes(await loadFor(query));
+      setStatus('ready');
+    } catch (error) {
+      console.error('Failed to refresh shoes', error);
+      setStatus('error');
+    }
+    setRefreshing(false);
+  }, [query, loadFor]);
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Gaitr
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.two }]}>
+        <View style={styles.brandRow}>
+          <GatorLogo size={40} />
+          <ThemedText type="title" style={styles.wordmark}>
+            Gaitr
           </ThemedText>
-        </ThemedView>
+        </View>
+        <TextInput
+          style={[styles.search, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+          placeholder="Search shoes or brands"
+          placeholderTextColor={theme.textSecondary}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+          value={query}
+          onChangeText={setQuery}
+        />
+      </View>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Signed in as"
-            hint={<ThemedText type="code">{session?.user.email ?? 'unknown'}</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <Pressable onPress={signOut} style={({ pressed }) => pressed && styles.pressed}>
-            <ThemedView type="backgroundSelected" style={styles.signOutButton}>
-              <ThemedText type="smallBold">Sign out</ThemedText>
-            </ThemedView>
-          </Pressable>
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
+      {status === 'loading' ? (
+        <View style={styles.centered}>
+          <ActivityIndicator color={theme.accent} />
+        </View>
+      ) : status === 'error' ? (
+        <View style={styles.centered}>
+          <ThemedText type="subtitle">Couldn&apos;t load shoes</ThemedText>
+          <ThemedText themeColor="textSecondary">Pull down to try again.</ThemedText>
+        </View>
+      ) : (
+        <FlatList
+          data={shoes}
+          keyExtractor={(shoe) => shoe.id}
+          renderItem={({ item }) => (
+            <View style={styles.cell}>
+              <ShoeCard shoe={item} />
+            </View>
+          )}
+          numColumns={2}
+          columnWrapperStyle={styles.column}
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: BottomTabInset + Spacing.four },
+          ]}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <ThemedText themeColor="textSecondary">
+                {query.trim() ? `No shoes match “${query.trim()}”` : 'No shoes yet.'}
+              </ThemedText>
+            </View>
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.accent}
+            />
+          }
+        />
+      )}
     </ThemedView>
   );
 }
@@ -68,44 +145,53 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
+  header: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.three,
     gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
     maxWidth: MaxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
   },
-  heroSection: {
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  wordmark: {
+    fontSize: 34,
+    lineHeight: 40,
+  },
+  search: {
+    borderRadius: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 16,
+  },
+  centered: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    gap: Spacing.two,
+    padding: Spacing.four,
   },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
+  listContent: {
+    paddingHorizontal: Spacing.three,
     gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    maxWidth: MaxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
   },
-  signOutButton: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+  column: {
+    gap: Spacing.three,
+  },
+  cell: {
+    // Each grid cell takes an equal half of the row so both columns render.
+    flex: 1,
+  },
+  empty: {
     alignItems: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
+    paddingVertical: Spacing.six,
   },
 });

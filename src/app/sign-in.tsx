@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GatorLogo } from '@/components/gator-logo';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -57,6 +58,7 @@ export default function SignInScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.form}>
           <ThemedView style={styles.header}>
+            <GatorLogo size={72} />
             <ThemedText type="title">Gaitr</ThemedText>
             <ThemedText themeColor="textSecondary">
               {isSignUp ? 'Create your account' : 'Welcome back'}
@@ -99,12 +101,12 @@ export default function SignInScreen() {
               disabled={!canSubmit}
               style={({ pressed }) => [
                 styles.button,
-                { backgroundColor: theme.text, opacity: canSubmit ? (pressed ? 0.8 : 1) : 0.4 },
+                { backgroundColor: theme.accent, opacity: canSubmit ? (pressed ? 0.85 : 1) : 0.4 },
               ]}>
               {submitting ? (
-                <ActivityIndicator color={theme.background} />
+                <ActivityIndicator color={theme.onAccent} />
               ) : (
-                <ThemedText style={{ color: theme.background }} type="smallBold">
+                <ThemedText style={{ color: theme.onAccent }} type="smallBold">
                   {isSignUp ? 'Sign up' : 'Sign in'}
                 </ThemedText>
               )}

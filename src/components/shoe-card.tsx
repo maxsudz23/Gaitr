@@ -38,7 +38,11 @@ export function ShoeCard({ shoe }: { shoe: ShoeListItem }) {
               <ThemedText type="small" themeColor="textSecondary">
                 {formatCategory(shoe.category)}
               </ThemedText>
-              {price ? <ThemedText type="smallBold">{price}</ThemedText> : null}
+              {price ? (
+                <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                  {price}
+                </ThemedText>
+              ) : null}
             </View>
           </View>
         </ThemedView>
