@@ -1,5 +1,5 @@
 import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedIcon } from '@/components/animated-icon';
@@ -8,6 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/lib/auth-context';
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -29,13 +30,15 @@ function getDevMenuHint() {
 }
 
 export default function HomeScreen() {
+  const { session, signOut } = useAuth();
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.heroSection}>
           <AnimatedIcon />
           <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+            Welcome to&nbsp;Gaitr
           </ThemedText>
         </ThemedView>
 
@@ -45,14 +48,15 @@ export default function HomeScreen() {
 
         <ThemedView type="backgroundElement" style={styles.stepContainer}>
           <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+            title="Signed in as"
+            hint={<ThemedText type="code">{session?.user.email ?? 'unknown'}</ThemedText>}
           />
           <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
+          <Pressable onPress={signOut} style={({ pressed }) => pressed && styles.pressed}>
+            <ThemedView type="backgroundSelected" style={styles.signOutButton}>
+              <ThemedText type="smallBold">Sign out</ThemedText>
+            </ThemedView>
+          </Pressable>
         </ThemedView>
 
         {Platform.OS === 'web' && <WebBadge />}
@@ -94,5 +98,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.four,
     borderRadius: Spacing.four,
+  },
+  signOutButton: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
+    alignItems: 'center',
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });
