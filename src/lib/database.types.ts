@@ -358,7 +358,32 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      search_shoes: {
+        Args: { search_query: string }
+        Returns: {
+          brand_id: string
+          category: Database["public"]["Enums"]["shoe_category"]
+          created_at: string
+          description: string | null
+          drop_mm: number | null
+          forefoot_stack_mm: number | null
+          heel_stack_mm: number | null
+          id: string
+          image_url: string | null
+          msrp_cents: number | null
+          name: string
+          release_year: number | null
+          slug: string
+          updated_at: string
+          weight_grams: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "shoes"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       component_type:

@@ -26,6 +26,18 @@ export async function fetchShoes(): Promise<ShoeListItem[]> {
   return data;
 }
 
+// --- Search: matches on shoe name or brand name via the search_shoes RPC ---
+// The function returns `setof shoes`, so we embed the brand on the result the
+// same way the browse list does, keeping the row shape identical (ShoeListItem).
+export async function searchShoes(query: string): Promise<ShoeListItem[]> {
+  const { data, error } = await supabase
+    .rpc('search_shoes', { search_query: query })
+    .select('id, name, category, image_url, msrp_cents, weight_grams, drop_mm, brand:brands(id, name)')
+    .order('name');
+  if (error) throw error;
+  return data;
+}
+
 // --- Detail: everything about one shoe, including its brand and components ---
 function shoeDetailQuery() {
   return supabase
