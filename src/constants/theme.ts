@@ -14,6 +14,10 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    // Gaitr brand green.
+    accent: '#1F9D55',
+    accentSoft: '#E7F6EC',
+    onAccent: '#ffffff',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +25,10 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    // Slightly brighter green for contrast on dark backgrounds.
+    accent: '#2FBE6A',
+    accentSoft: '#123020',
+    onAccent: '#08130C',
   },
 } as const;
 
