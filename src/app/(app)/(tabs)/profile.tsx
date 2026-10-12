@@ -8,6 +8,13 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
 
 // Mirrors the `username_format` check constraint on the profiles table.
 const USERNAME_PATTERN = /^[a-z0-9_]{3,30}$/;
@@ -18,6 +25,7 @@ export default function ProfileScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { session, signOut } = useAuth();
+  const [themePreference, setThemePreference] = useThemePreference();
 
   const [profile, setProfile] = useState<{ username: string; is_admin: boolean } | null>(null);
 
@@ -142,6 +150,33 @@ export default function ProfileScreen() {
           ) : null}
         </ThemedView>
 
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Appearance
+          </ThemedText>
+          <View
+            style={[styles.segmented, { backgroundColor: theme.background }]}
+            accessibilityRole="radiogroup">
+            {THEME_OPTIONS.map((option) => {
+              const selected = option.value === themePreference;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setThemePreference(option.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  style={[styles.segment, selected && { backgroundColor: theme.accent }]}>
+                  <ThemedText
+                    type="smallBold"
+                    style={{ color: selected ? theme.onAccent : theme.textSecondary }}>
+                    {option.label}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ThemedView>
+
         <Pressable
           onPress={signOut}
           style={({ pressed }) => [
@@ -152,11 +187,6 @@ export default function ProfileScreen() {
             Sign out
           </ThemedText>
         </Pressable>
-
-        <ThemedText type="small" themeColor="textSecondary" style={styles.footnote}>
-          Appearance follows your system light/dark setting. A manual theme
-          toggle is coming soon.
-        </ThemedText>
       </View>
     </ThemedView>
   );
@@ -227,7 +257,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  footnote: {
-    textAlign: 'center',
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: Spacing.two,
+    padding: Spacing.half,
+  },
+  segment: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.two - Spacing.half,
   },
 });

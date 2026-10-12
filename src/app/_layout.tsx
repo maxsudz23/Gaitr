@@ -4,8 +4,12 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { applyStoredThemePreference } from '@/lib/theme-preference';
 
 SplashScreen.preventAutoHideAsync();
+// Apply the saved Light/Dark/System choice before anything renders, so there's
+// no flash of the wrong theme on launch.
+applyStoredThemePreference();
 
 // The route guards. Stack.Protected renders a group only when its guard is true,
 // and Expo Router redirects automatically when the guard flips — so signing in
