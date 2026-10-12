@@ -7,6 +7,7 @@ export default function AppLayout() {
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="shoe/[id]" options={{ title: '' }} />
+      <Stack.Screen name="review/[shoeId]" options={{ title: '', presentation: 'modal' }} />
     </Stack>
   );
 }

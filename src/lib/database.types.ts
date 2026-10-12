@@ -358,9 +358,34 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      shoe_rating_stats: {
+        Row: {
+          average_rating: number | null
+          review_count: number | null
+          shoe_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_shoe_id_fkey"
+            columns: ["shoe_id"]
+            isOneToOne: false
+            referencedRelation: "shoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      save_review: {
+        Args: {
+          aspect_ratings?: Json
+          overall: number
+          review_body: string
+          review_title: string
+          target_shoe_id: string
+        }
+        Returns: string
+      }
       search_shoes: {
         Args: { search_query: string }
         Returns: {
