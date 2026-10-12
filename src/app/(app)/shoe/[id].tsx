@@ -1,17 +1,30 @@
 import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { ReviewCard } from '@/components/review-card';
+import { StarRating } from '@/components/star-rating';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '@/lib/auth-context';
+import {
+  fetchRatingStats,
+  fetchShoeReviews,
+  formatRating,
+  type RatingStats,
+  type Review,
+} from '@/lib/reviews';
 import { fetchShoeById, formatCategory, formatPrice, type ShoeDetail } from '@/lib/shoes';
 
 export default function ShoeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const router = useRouter();
+  const { session } = useAuth();
+  const userId = session?.user.id;
 
   const [shoe, setShoe] = useState<ShoeDetail | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -33,6 +46,33 @@ export default function ShoeDetailScreen() {
       active = false;
     };
   }, [id]);
+
+  // Reviews reload every time the screen regains focus, so returning from the
+  // write-review form shows the saved review without a manual refresh.
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [stats, setStats] = useState<RatingStats>({ reviewCount: 0, averageRating: null });
+  const [reviewsStatus, setReviewsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      Promise.all([fetchShoeReviews(id), fetchRatingStats(id)])
+        .then(([nextReviews, nextStats]) => {
+          if (!active) return;
+          setReviews(nextReviews);
+          setStats(nextStats);
+          setReviewsStatus('ready');
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error('Failed to load reviews', error);
+          setReviewsStatus('error');
+        });
+      return () => {
+        active = false;
+      };
+    }, [id]),
+  );
 
   if (status === 'loading') {
     return (
@@ -62,6 +102,8 @@ export default function ShoeDetailScreen() {
     shoe.release_year ? { label: 'Released', value: String(shoe.release_year) } : null,
   ].filter((spec): spec is { label: string; value: string } => spec !== null);
 
+  const hasMyReview = reviews.some((review) => review.user_id === userId);
+
   return (
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ title: shoe.name }} />
@@ -78,6 +120,16 @@ export default function ShoeDetailScreen() {
           </ThemedText>
           <ThemedText type="subtitle">{shoe.name}</ThemedText>
           <ThemedText themeColor="textSecondary">{formatCategory(shoe.category)}</ThemedText>
+          <View style={styles.ratingRow}>
+            <StarRating value={stats.averageRating ?? 0} size={18} />
+            <ThemedText type="small" themeColor="textSecondary">
+              {stats.averageRating != null
+                ? `${formatRating(stats.averageRating)} · ${stats.reviewCount} ${
+                    stats.reviewCount === 1 ? 'review' : 'reviews'
+                  }`
+                : 'No reviews yet'}
+            </ThemedText>
+          </View>
         </View>
 
         {shoe.description ? <ThemedText>{shoe.description}</ThemedText> : null}
@@ -110,6 +162,42 @@ export default function ShoeDetailScreen() {
             ))}
           </View>
         ) : null}
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="smallBold">Reviews</ThemedText>
+            {/* router.push rather than <Link asChild>: Link doesn't forward a
+                function-style `style`, which would drop the button background. */}
+            <Pressable
+              onPress={() =>
+                router.push({ pathname: '/review/[shoeId]', params: { shoeId: shoe.id } })
+              }
+              style={({ pressed }) => [
+                styles.reviewButton,
+                { backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1 },
+              ]}>
+              <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
+                {hasMyReview ? 'Edit your review' : 'Write a review'}
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          {reviewsStatus === 'loading' ? (
+            <ActivityIndicator color={theme.accent} />
+          ) : reviewsStatus === 'error' ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              Couldn&apos;t load reviews.
+            </ThemedText>
+          ) : reviews.length === 0 ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              Be the first to review this shoe.
+            </ThemedText>
+          ) : (
+            reviews.map((review) => (
+              <ReviewCard key={review.id} review={review} isMine={review.user_id === userId} />
+            ))
+          )}
+        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -154,6 +242,22 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  reviewButton: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.three,
   },
   componentRow: {
     flexDirection: 'row',
