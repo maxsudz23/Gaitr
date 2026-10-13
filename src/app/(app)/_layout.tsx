@@ -4,10 +4,14 @@ import { Stack } from 'expo-router';
 
 export default function AppLayout() {
   return (
-    <Stack>
+    // Chevron-only back buttons: otherwise iOS labels the button with the
+    // previous screen's title, which for the tab group is the raw "(tabs)".
+    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="shoe/[id]" options={{ title: '' }} />
       <Stack.Screen name="review/[shoeId]" options={{ title: '', presentation: 'modal' }} />
+      <Stack.Screen name="user/[id]" options={{ title: '' }} />
+      <Stack.Screen name="review-detail/[reviewId]" options={{ title: 'Review' }} />
     </Stack>
   );
 }
