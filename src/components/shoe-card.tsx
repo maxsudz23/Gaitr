@@ -8,7 +8,13 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatCategory, formatPrice, type ShoeListItem } from '@/lib/shoes';
 
-export function ShoeCard({ shoe }: { shoe: ShoeListItem }) {
+type ShoeCardProps = {
+  shoe: ShoeListItem;
+  /** An extra line under the details, e.g. why a discovery section shows it. */
+  caption?: string | null;
+};
+
+export function ShoeCard({ shoe, caption }: ShoeCardProps) {
   const theme = useTheme();
   const price = formatPrice(shoe.msrp_cents);
 
@@ -44,6 +50,11 @@ export function ShoeCard({ shoe }: { shoe: ShoeListItem }) {
                 </ThemedText>
               ) : null}
             </View>
+            {caption ? (
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                {caption}
+              </ThemedText>
+            ) : null}
           </View>
         </ThemedView>
       </Pressable>

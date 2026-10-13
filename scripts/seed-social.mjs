@@ -13,14 +13,18 @@
  *
  * Fake accounts use `@seed.gaitr.local` emails and are deleted on --clean;
  * deleting them cascades to their reviews, likes, comments, and follows.
+ * Their review photos (generated gradient placeholders) are removed from
+ * storage first, since storage objects don't cascade.
  * Uses the local service-role key from `supabase status`, so it only ever
  * touches the local stack.
  */
 import { execSync } from 'node:child_process';
+import { crc32, deflateSync } from 'node:zlib';
 
 import { createClient } from '@supabase/supabase-js';
 
 const SEED_DOMAIN = 'seed.gaitr.local';
+const MEDIA_BUCKET = 'review-media';
 
 const REVIEWERS = [
   {
@@ -60,6 +64,16 @@ const REVIEWS = [
   ['casual_carla', 'pegasus-41', 4, 'My go-to jogger', 'Comfortable out of the box and looks good enough to wear to brunch.', { style: 5, comfort: 4 }, 3],
 ];
 
+// [review author, shoe slug, [width, height, from color, to color] per photo]
+const PHOTOS = [
+  ['trail_tess', 'speedgoat-5', [
+    [1200, 900, [34, 139, 84], [168, 213, 120]],
+    [900, 1200, [92, 64, 51], [214, 170, 110]],
+    [1200, 900, [40, 90, 160], [150, 200, 235]],
+  ]],
+  ['tempo_tom', 'vaporfly-3', [[1080, 1080, [230, 80, 40], [250, 200, 60]]]],
+];
+
 // [liker, review author, shoe slug]
 const LIKES = [
   ['tempo_tom', 'trail_tess', 'speedgoat-5'],
@@ -77,6 +91,40 @@ const COMMENTS = [
   ['tempo_tom', 'tempo_tom', 'vaporfly-3', '@daily_miles Thanks! Full marathon, 3:04.', 3],
   ['casual_carla', 'trail_tess', 'speedgoat-5', 'Do they run true to size?'],
 ];
+
+// A diagonal-gradient PNG, so seeded reviews have photos without checking
+// image files into the repo.
+function gradientPng(width, height, from, to) {
+  const rows = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * (width * 3 + 1); // each row starts with filter byte 0
+    for (let x = 0; x < width; x++) {
+      const t = (x / width + y / height) / 2;
+      for (let c = 0; c < 3; c++) {
+        rows[row + 1 + x * 3 + c] = Math.round(from[c] + (to[c] - from[c]) * t);
+      }
+    }
+  }
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 2; // color type: RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 function localKeys() {
   const env = Object.fromEntries(
@@ -104,9 +152,25 @@ async function listAllUsers() {
   return data.users;
 }
 
+// Photos live under `<user id>/<review id>/` in the bucket.
+async function removeSeedPhotos(userId) {
+  const storage = admin.storage.from(MEDIA_BUCKET);
+  const { data: folders, error } = await storage.list(userId);
+  if (error) throw error;
+  for (const folder of folders) {
+    const prefix = `${userId}/${folder.name}`;
+    const { data: files, error: listError } = await storage.list(prefix);
+    if (listError) throw listError;
+    if (files.length === 0) continue;
+    const { error: removeError } = await storage.remove(files.map((f) => `${prefix}/${f.name}`));
+    if (removeError) throw removeError;
+  }
+}
+
 async function clean() {
   const seedUsers = (await listAllUsers()).filter((u) => u.email?.endsWith(`@${SEED_DOMAIN}`));
   for (const user of seedUsers) {
+    await removeSeedPhotos(user.id);
     const { error } = await admin.auth.admin.deleteUser(user.id);
     if (error) throw error;
   }
@@ -163,6 +227,30 @@ async function seed() {
     if (ratingsError) throw ratingsError;
   }
 
+  let photoCount = 0;
+  for (const [author, slug, photos] of PHOTOS) {
+    const id = reviewId[`${author}/${slug}`];
+    for (const [position, [width, height, from, to]] of photos.entries()) {
+      const path = `${userId[author]}/${id}/seed-${position}.png`;
+      const { error: uploadError } = await admin.storage
+        .from(MEDIA_BUCKET)
+        .upload(path, gradientPng(width, height, from, to), { contentType: 'image/png' });
+      if (uploadError) throw uploadError;
+      const { error } = await admin.from('media').insert({
+        user_id: userId[author],
+        review_id: id,
+        shoe_id: shoeId[slug],
+        type: 'image',
+        storage_path: path,
+        width,
+        height,
+        position,
+      });
+      if (error) throw error;
+      photoCount++;
+    }
+  }
+
   const { error: likesError } = await admin.from('review_likes').insert(
     LIKES.map(([liker, author, slug]) => ({
       user_id: userId[liker],
@@ -210,7 +298,7 @@ async function seed() {
   }
 
   console.log(
-    `Seeded ${REVIEWERS.length} reviewers, ${REVIEWS.length} reviews, ${LIKES.length} likes, ` +
+    `Seeded ${REVIEWERS.length} reviewers, ${REVIEWS.length} reviews, ${photoCount} photos, ${LIKES.length} likes, ` +
       `${COMMENTS.length} comments (incl. replies). ${realUsers.length} real account(s) now follow ` +
       `${REVIEWERS.filter((r) => r.followed).length} of them.`,
   );
