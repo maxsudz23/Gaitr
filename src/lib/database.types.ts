@@ -584,6 +584,32 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      suggested_reviewers: {
+        Args: { max_results?: number }
+        Returns: {
+          mutual_count: number
+          profile_id: string
+          review_count: number
+          score: number
+        }[]
+      }
+      top_rated_shoes: {
+        Args: { max_results?: number; prior_weight?: number }
+        Returns: {
+          average_rating: number
+          review_count: number
+          shoe_id: string
+          weighted_rating: number
+        }[]
+      }
+      trending_shoes: {
+        Args: { max_results?: number }
+        Returns: {
+          reviews_this_week: number
+          score: number
+          shoe_id: string
+        }[]
+      }
     }
     Enums: {
       component_type:
