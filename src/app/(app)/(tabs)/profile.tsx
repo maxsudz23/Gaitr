@@ -1,12 +1,22 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { StatusBarBackdrop } from '@/components/status-bar-backdrop';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
+import { fetchProfile, fetchSavedShoes, type PublicProfile, type SavedShoe } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
 import { useThemePreference, type ThemePreference } from '@/lib/theme-preference';
 
@@ -26,6 +36,29 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { session, signOut } = useAuth();
   const [themePreference, setThemePreference] = useThemePreference();
+  const router = useRouter();
+  const userId = session!.user.id;
+
+  // Follower counts and saved shoes change from other screens, so they reload
+  // whenever this tab gains focus.
+  const [social, setSocial] = useState<PublicProfile | null>(null);
+  const [savedShoes, setSavedShoes] = useState<SavedShoe[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      Promise.all([fetchProfile(userId), fetchSavedShoes(userId)])
+        .then(([nextSocial, nextSaved]) => {
+          if (!active) return;
+          setSocial(nextSocial);
+          setSavedShoes(nextSaved);
+        })
+        .catch((error) => console.error('Failed to load profile social data', error));
+      return () => {
+        active = false;
+      };
+    }, [userId]),
+  );
 
   const [profile, setProfile] = useState<{ username: string; is_admin: boolean } | null>(null);
 
@@ -86,7 +119,12 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <View style={[styles.content, { paddingTop: insets.top + Spacing.four }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.four },
+        ]}
+        keyboardShouldPersistTaps="handled">
         <ThemedText type="subtitle">Profile</ThemedText>
 
         <ThemedView type="backgroundElement" style={styles.card}>
@@ -151,6 +189,44 @@ export default function ProfileScreen() {
         </ThemedView>
 
         <ThemedView type="backgroundElement" style={styles.card}>
+          <View style={styles.statsRow}>
+            <Field label="Followers" value={String(social?.followerCount ?? '—')} />
+            <Field label="Following" value={String(social?.followingCount ?? '—')} />
+          </View>
+          <Pressable
+            onPress={() => router.push({ pathname: '/user/[id]', params: { id: userId } })}>
+            <ThemedText type="smallBold" style={{ color: theme.accent }}>
+              View your public profile
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
+
+        <ThemedView type="backgroundElement" style={styles.card}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Saved shoes
+          </ThemedText>
+          {savedShoes.length === 0 ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              Tap the bookmark on any shoe to save it here.
+            </ThemedText>
+          ) : (
+            savedShoes.map((shoe) => (
+              <Pressable
+                key={shoe.id}
+                onPress={() => router.push({ pathname: '/shoe/[id]', params: { id: shoe.id } })}
+                style={({ pressed }) => [styles.savedRow, pressed && { opacity: 0.6 }]}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {shoe.brand?.name}
+                </ThemedText>
+                <ThemedText type="smallBold" numberOfLines={1} style={styles.savedName}>
+                  {shoe.name}
+                </ThemedText>
+              </Pressable>
+            ))
+          )}
+        </ThemedView>
+
+        <ThemedView type="backgroundElement" style={styles.card}>
           <ThemedText type="small" themeColor="textSecondary">
             Appearance
           </ThemedText>
@@ -187,7 +263,8 @@ export default function ProfileScreen() {
             Sign out
           </ThemedText>
         </Pressable>
-      </View>
+      </ScrollView>
+      <StatusBarBackdrop />
     </ThemedView>
   );
 }
@@ -218,6 +295,19 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.four,
     padding: Spacing.four,
     gap: Spacing.three,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: Spacing.five,
+  },
+  savedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  savedName: {
+    flexShrink: 1,
   },
   field: {
     gap: Spacing.half,

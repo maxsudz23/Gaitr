@@ -3,6 +3,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { BookmarkIcon } from '@/components/icons';
 import { ReviewCard } from '@/components/review-card';
 import { StarRating } from '@/components/star-rating';
 import { ThemedText } from '@/components/themed-text';
@@ -18,13 +19,14 @@ import {
   type Review,
 } from '@/lib/reviews';
 import { fetchShoeById, formatCategory, formatPrice, type ShoeDetail } from '@/lib/shoes';
+import { isShoeSaved, setShoeSaved } from '@/lib/social';
 
 export default function ShoeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const router = useRouter();
   const { session } = useAuth();
-  const userId = session?.user.id;
+  const userId = session!.user.id;
 
   const [shoe, setShoe] = useState<ShoeDetail | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -47,6 +49,31 @@ export default function ShoeDetailScreen() {
     };
   }, [id]);
 
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    isShoeSaved(userId, id)
+      .then((value) => {
+        if (active) setSaved(value);
+      })
+      .catch((error) => console.error('Failed to load saved state', error));
+    return () => {
+      active = false;
+    };
+  }, [id, userId]);
+
+  async function toggleSaved() {
+    const next = !saved;
+    setSaved(next);
+    try {
+      await setShoeSaved(userId, id, next);
+    } catch (error) {
+      console.error('Failed to update saved state', error);
+      setSaved(!next);
+    }
+  }
+
   // Reviews reload every time the screen regains focus, so returning from the
   // write-review form shows the saved review without a manual refresh.
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -56,7 +83,7 @@ export default function ShoeDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      Promise.all([fetchShoeReviews(id), fetchRatingStats(id)])
+      Promise.all([fetchShoeReviews(id, userId), fetchRatingStats(id)])
         .then(([nextReviews, nextStats]) => {
           if (!active) return;
           setReviews(nextReviews);
@@ -71,7 +98,7 @@ export default function ShoeDetailScreen() {
       return () => {
         active = false;
       };
-    }, [id]),
+    }, [id, userId]),
   );
 
   if (status === 'loading') {
@@ -106,7 +133,20 @@ export default function ShoeDetailScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: shoe.name }} />
+      <Stack.Screen
+        options={{
+          title: shoe.name,
+          headerRight: () => (
+            <Pressable
+              onPress={toggleSaved}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={saved ? 'Remove from saved' : 'Save shoe'}>
+              <BookmarkIcon size={22} color={theme.accent} filled={saved} />
+            </Pressable>
+          ),
+        }}
+      />
       <ScrollView contentContainerStyle={styles.content}>
         {shoe.image_url ? (
           <Image source={shoe.image_url} style={styles.image} contentFit="cover" transition={150} />
@@ -194,7 +234,7 @@ export default function ShoeDetailScreen() {
             </ThemedText>
           ) : (
             reviews.map((review) => (
-              <ReviewCard key={review.id} review={review} isMine={review.user_id === userId} />
+              <ReviewCard key={review.id} review={review} viewerId={userId} />
             ))
           )}
         </View>
